@@ -99,9 +99,8 @@ static float FetchHeightWorld(float2 uv)
     return gMinHeight + h01 * HeightRange();
 }
 
-static float3 NormalFromHeight(float2 uv)
+static float3 NormalFromHeight(float2 uv, float wave)
 {
-    // central difference in UV space
     float2 d = HeightTexel();
 
     float hL = FetchHeightWorld(uv + float2(-d.x, 0.0));
@@ -109,13 +108,17 @@ static float3 NormalFromHeight(float2 uv)
     float hD = FetchHeightWorld(uv + float2(0.0, -d.y));
     float hU = FetchHeightWorld(uv + float2(0.0, d.y));
 
-    // match original “scale” idea for Y component
+    hL = gMinHeight + (hL - gMinHeight) * wave;
+    hR = gMinHeight + (hR - gMinHeight) * wave;
+    hD = gMinHeight + (hD - gMinHeight) * wave;
+    hU = gMinHeight + (hU - gMinHeight) * wave;
+
     float yScale = 2.0 * gTerrainSize / gHeightMapSize.x;
 
     float3 n;
-    n.x = (hL - hR);
+    n.x = hL - hR;
     n.y = yScale;
-    n.z = (hD - hU);
+    n.z = hD - hU;
 
     return normalize(n);
 }
@@ -140,10 +143,14 @@ VertexOut VS(VertexIn vin)
     pLocal.y = 0.0;
 
     float4 pWorld = mul(float4(pLocal, 1.0), gWorld);
-    pWorld.y = FetchHeightWorld(uvGlobal);
+    float baseHeight = FetchHeightWorld(uvGlobal);
+
+    float wave = 1.0f + 0.20f * sin(gTotalTime * 1.0f);
+
+    pWorld.y = gMinHeight + (baseHeight - gMinHeight) * wave;
 
     o.PosW = pWorld.xyz;
-    o.NormalW = NormalFromHeight(uvGlobal);
+    o.NormalW = NormalFromHeight(uvGlobal, wave);
     o.PosH = mul(pWorld, gViewProj);
     o.TexC = uvGlobal;
 
