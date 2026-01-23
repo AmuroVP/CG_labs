@@ -45,7 +45,13 @@ private:
         XMFLOAT4X4 World;
         XMFLOAT4X4 WorldView;
         XMFLOAT4X4 WorldViewProj;
-        uint32_t   DrawMeshlets;
+
+        uint32_t DrawMeshlets;
+
+        float Time;        // секунды
+        float Amp;         // амплитуда
+        float Freq;        // скорость
+        float PhaseScale;  // масштаб фазы по координате
     };
 
     // Pipeline objects.
@@ -69,10 +75,12 @@ private:
     SceneConstantBuffer m_constantBufferData;
     UINT8* m_cbvDataBegin;
 
+    UINT m_cbSize = 0;
+
     StepTimer m_timer;
     SimpleCamera m_camera;
     Model m_model;
-    
+
     // Synchronization objects.
     UINT m_frameIndex;
     UINT m_frameCounter;

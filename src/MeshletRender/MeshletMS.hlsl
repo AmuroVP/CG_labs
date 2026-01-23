@@ -21,7 +21,13 @@ struct Constants
     float4x4 World;
     float4x4 WorldView;
     float4x4 WorldViewProj;
-    uint     DrawMeshlets;
+
+    uint DrawMeshlets;
+
+    float Time;
+    float Amp;
+    float Freq;
+    float PhaseScale;
 };
 
 struct MeshInfo
@@ -38,10 +44,10 @@ struct Vertex
 
 struct VertexOut
 {
-    float4 PositionHS   : SV_Position;
-    float3 PositionVS   : POSITION0;
-    float3 Normal       : NORMAL0;
-    uint   MeshletIndex : COLOR0;
+    float4 PositionHS : SV_Position;
+    float3 PositionVS : POSITION0;
+    float3 Normal : NORMAL0;
+    uint MeshletIndex : COLOR0;
 };
 
 struct Meshlet
@@ -52,13 +58,13 @@ struct Meshlet
     uint PrimOffset;
 };
 
-ConstantBuffer<Constants> Globals             : register(b0);
-ConstantBuffer<MeshInfo>  MeshInfo            : register(b1);
+ConstantBuffer<Constants> Globals : register(b0);
+ConstantBuffer<MeshInfo> g_MeshInfo : register(b1);
 
-StructuredBuffer<Vertex>  Vertices            : register(t0);
-StructuredBuffer<Meshlet> Meshlets            : register(t1);
-ByteAddressBuffer         UniqueVertexIndices : register(t2);
-StructuredBuffer<uint>    PrimitiveIndices    : register(t3);
+StructuredBuffer<Vertex> Vertices : register(t0);
+StructuredBuffer<Meshlet> Meshlets : register(t1);
+ByteAddressBuffer UniqueVertexIndices : register(t2);
+StructuredBuffer<uint> PrimitiveIndices : register(t3);
 
 
 /////
@@ -79,7 +85,7 @@ uint GetVertexIndex(Meshlet m, uint localIndex)
 {
     localIndex = m.VertOffset + localIndex;
 
-    if (MeshInfo.IndexBytes == 4) // 32-bit Vertex Indices
+    if (g_MeshInfo.IndexBytes == 4) // 32-bit Vertex Indices
     {
         return UniqueVertexIndices.Load(localIndex * 4);
     }
@@ -101,12 +107,18 @@ VertexOut GetVertexAttributes(uint meshletIndex, uint vertexIndex)
 {
     Vertex v = Vertices[vertexIndex];
 
-    VertexOut vout;
-    vout.PositionVS = mul(float4(v.Position, 1), Globals.WorldView).xyz;
-    vout.PositionHS = mul(float4(v.Position, 1), Globals.WorldViewProj);
-    vout.Normal = mul(float4(v.Normal, 0), Globals.World).xyz;
-    vout.MeshletIndex = meshletIndex;
+    float phase = (v.Position.x + v.Position.z) * Globals.PhaseScale;
+    float scale = 1.0 + Globals.Amp * sin(Globals.Freq * Globals.Time + phase);
 
+    float3 pos = v.Position * scale;
+
+    VertexOut vout;
+    vout.PositionVS = mul(float4(pos, 1), Globals.WorldView).xyz;
+    vout.PositionHS = mul(float4(pos, 1), Globals.WorldViewProj);
+
+    vout.Normal = mul(float4(v.Normal, 0), Globals.World).xyz;
+
+    vout.MeshletIndex = meshletIndex;
     return vout;
 }
 
@@ -121,7 +133,7 @@ void main(
     out vertices VertexOut verts[64]
 )
 {
-    Meshlet m = Meshlets[MeshInfo.MeshletOffset + gid];
+    Meshlet m = Meshlets[g_MeshInfo.MeshletOffset + gid];
 
     SetMeshOutputCounts(m.VertCount, m.PrimCount);
 

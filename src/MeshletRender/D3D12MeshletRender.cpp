@@ -32,7 +32,8 @@ D3D12MeshletRender::D3D12MeshletRender(UINT width, UINT height, std::wstring nam
     , m_frameCounter(0)
     , m_fenceEvent{}
     , m_fenceValues{}
-{ }
+{
+}
 
 void D3D12MeshletRender::OnInit()
 {
@@ -75,7 +76,7 @@ void D3D12MeshletRender::LoadPipeline()
             warpAdapter.Get(),
             D3D_FEATURE_LEVEL_11_0,
             IID_PPV_ARGS(&m_device)
-            ));
+        ));
     }
     else
     {
@@ -86,7 +87,7 @@ void D3D12MeshletRender::LoadPipeline()
             hardwareAdapter.Get(),
             D3D_FEATURE_LEVEL_11_0,
             IID_PPV_ARGS(&m_device)
-            ));
+        ));
     }
 
     D3D12_FEATURE_DATA_SHADER_MODEL shaderModel = { D3D_SHADER_MODEL_6_5 };
@@ -130,7 +131,7 @@ void D3D12MeshletRender::LoadPipeline()
         nullptr,
         nullptr,
         &swapChain
-        ));
+    ));
 
     // This sample does not support fullscreen transitions.
     ThrowIfFailed(factory->MakeWindowAssociation(Win32Application::GetHwnd(), DXGI_MWA_NO_ALT_ENTER));
@@ -205,27 +206,22 @@ void D3D12MeshletRender::LoadPipeline()
 
     // Create the constant buffer.
     {
-        const UINT64 constantBufferSize = sizeof(SceneConstantBuffer) * FrameCount;
+        // размер одного CB, выровненный на 256 (обязательно для D3D12 CB)
+        m_cbSize = (sizeof(SceneConstantBuffer) + 255) & ~255;
+        const UINT64 bufferSize = UINT64(m_cbSize) * FrameCount;
 
-        const CD3DX12_HEAP_PROPERTIES constantBufferHeapProps(D3D12_HEAP_TYPE_UPLOAD);
-        const CD3DX12_RESOURCE_DESC constantBufferDesc = CD3DX12_RESOURCE_DESC::Buffer(constantBufferSize);
+        const CD3DX12_HEAP_PROPERTIES heapProps(D3D12_HEAP_TYPE_UPLOAD);
+        const CD3DX12_RESOURCE_DESC bufDesc = CD3DX12_RESOURCE_DESC::Buffer(bufferSize);
 
         ThrowIfFailed(m_device->CreateCommittedResource(
-            &constantBufferHeapProps,
+            &heapProps,
             D3D12_HEAP_FLAG_NONE,
-            &constantBufferDesc,
+            &bufDesc,
             D3D12_RESOURCE_STATE_GENERIC_READ,
             nullptr,
             IID_PPV_ARGS(&m_constantBuffer)));
 
-        // Describe and create a constant buffer view.
-        D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc = {};
-        cbvDesc.BufferLocation = m_constantBuffer->GetGPUVirtualAddress();
-        cbvDesc.SizeInBytes = constantBufferSize;
-
-        // Map and initialize the constant buffer. We don't unmap this until the
-        // app closes. Keeping things mapped for the lifetime of the resource is okay.
-        CD3DX12_RANGE readRange(0, 0);        // We do not intend to read from this resource on the CPU.
+        CD3DX12_RANGE readRange(0, 0);
         ThrowIfFailed(m_constantBuffer->Map(0, &readRange, reinterpret_cast<void**>(&m_cbvDataBegin)));
     }
 }
@@ -235,10 +231,10 @@ void D3D12MeshletRender::LoadAssets()
 {
     // Create the pipeline state, which includes compiling and loading shaders.
     {
-        struct 
-        { 
-            byte* data; 
-            uint32_t size; 
+        struct
+        {
+            byte* data;
+            uint32_t size;
         } meshShader, pixelShader;
 
         ReadDataFromFile(GetAssetFullPath(c_meshShaderFilename).c_str(), &meshShader.data, &meshShader.size);
@@ -248,23 +244,23 @@ void D3D12MeshletRender::LoadAssets()
         ThrowIfFailed(m_device->CreateRootSignature(0, meshShader.data, meshShader.size, IID_PPV_ARGS(&m_rootSignature)));
 
         D3DX12_MESH_SHADER_PIPELINE_STATE_DESC psoDesc = {};
-        psoDesc.pRootSignature        = m_rootSignature.Get();
-        psoDesc.MS                    = { meshShader.data, meshShader.size };
-        psoDesc.PS                    = { pixelShader.data, pixelShader.size };
-        psoDesc.NumRenderTargets      = 1;
-        psoDesc.RTVFormats[0]         = m_renderTargets[0]->GetDesc().Format;
-        psoDesc.DSVFormat             = m_depthStencil->GetDesc().Format;
-        psoDesc.RasterizerState       = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);    // CW front; cull back
-        psoDesc.BlendState            = CD3DX12_BLEND_DESC(D3D12_DEFAULT);         // Opaque
-        psoDesc.DepthStencilState     = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // Less-equal depth test w/ writes; no stencil
-        psoDesc.SampleMask            = UINT_MAX;
-        psoDesc.SampleDesc            = DefaultSampleDesc();
+        psoDesc.pRootSignature = m_rootSignature.Get();
+        psoDesc.MS = { meshShader.data, meshShader.size };
+        psoDesc.PS = { pixelShader.data, pixelShader.size };
+        psoDesc.NumRenderTargets = 1;
+        psoDesc.RTVFormats[0] = m_renderTargets[0]->GetDesc().Format;
+        psoDesc.DSVFormat = m_depthStencil->GetDesc().Format;
+        psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);    // CW front; cull back
+        psoDesc.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);         // Opaque
+        psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT); // Less-equal depth test w/ writes; no stencil
+        psoDesc.SampleMask = UINT_MAX;
+        psoDesc.SampleDesc = DefaultSampleDesc();
 
         auto psoStream = CD3DX12_PIPELINE_MESH_STATE_STREAM(psoDesc);
 
         D3D12_PIPELINE_STATE_STREAM_DESC streamDesc;
         streamDesc.pPipelineStateSubobjectStream = &psoStream;
-        streamDesc.SizeInBytes                   = sizeof(psoStream);
+        streamDesc.SizeInBytes = sizeof(psoStream);
 
         ThrowIfFailed(m_device->CreatePipelineState(&streamDesc, IID_PPV_ARGS(&m_pipelineState)));
     }
@@ -295,7 +291,7 @@ void D3D12MeshletRender::LoadAssets()
             assert(std::memcmp(&mesh.LayoutElems[i], &c_elementDescs[i], sizeof(D3D12_INPUT_ELEMENT_DESC)) == 0);
     }
 #endif
-    
+
     // Create synchronization objects and wait until assets have been uploaded to the GPU.
     {
         ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
@@ -333,13 +329,18 @@ void D3D12MeshletRender::OnUpdate()
     XMMATRIX world = XMMATRIX(g_XMIdentityR0, g_XMIdentityR1, g_XMIdentityR2, g_XMIdentityR3);
     XMMATRIX view = m_camera.GetViewMatrix();
     XMMATRIX proj = m_camera.GetProjectionMatrix(XM_PI / 3.0f, m_aspectRatio);
-    
+
     XMStoreFloat4x4(&m_constantBufferData.World, XMMatrixTranspose(world));
     XMStoreFloat4x4(&m_constantBufferData.WorldView, XMMatrixTranspose(world * view));
     XMStoreFloat4x4(&m_constantBufferData.WorldViewProj, XMMatrixTranspose(world * view * proj));
     m_constantBufferData.DrawMeshlets = true;
 
-    memcpy(m_cbvDataBegin + sizeof(SceneConstantBuffer) * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
+    m_constantBufferData.Time = static_cast<float>(m_timer.GetTotalSeconds());
+    m_constantBufferData.Amp = 0.20f;
+    m_constantBufferData.Freq = 2.5f;
+    m_constantBufferData.PhaseScale = 0.08f;
+
+    memcpy(m_cbvDataBegin + m_cbSize * m_frameIndex, &m_constantBufferData, sizeof(m_constantBufferData));
 }
 
 // Render the scene.
@@ -407,7 +408,8 @@ void D3D12MeshletRender::PopulateCommandList()
     m_commandList->ClearRenderTargetView(rtvHandle, clearColor, 0, nullptr);
     m_commandList->ClearDepthStencilView(dsvHandle, D3D12_CLEAR_FLAG_DEPTH, 1.0f, 0, 0, nullptr);
 
-    m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + sizeof(SceneConstantBuffer) * m_frameIndex);
+    m_commandList->SetGraphicsRootConstantBufferView(0, m_constantBuffer->GetGPUVirtualAddress() + UINT64(m_cbSize) * m_frameIndex);
+
 
     for (auto& mesh : m_model)
     {
